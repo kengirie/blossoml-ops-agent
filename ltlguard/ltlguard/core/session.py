@@ -26,7 +26,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
-from ltlguard.core.dfa import CompiledRule
+from ltlguard.core.automaton import Rule
 from ltlguard.core.labeling import Labeler
 from ltlguard.core.monitor import Monitor
 from ltlguard.trace.jsonl import TraceWriter
@@ -104,7 +104,7 @@ class GuardSession:
         except Exception as e:  # never let alerting break enforcement
             self.trace.write("alert_error", error=type(e).__name__)
 
-    def _alert_rules(self, rules: list[CompiledRule], what: str, tool: str) -> None:
+    def _alert_rules(self, rules: list[Rule], what: str, tool: str) -> None:
         for r in rules:
             if r.alert:
                 self._alert(
@@ -120,7 +120,7 @@ class GuardSession:
             cands.append((c, self.labeler.call_props(c.tool, c.args), self.labeler.possible_result_props(c.tool, c.args)))
         return self.monitor.allowed_candidates(cands)
 
-    def deny_message(self, rules: list[CompiledRule]) -> str:
+    def deny_message(self, rules: list[Rule]) -> str:
         lines = []
         for r in rules:
             lines.append(f"ルール {r.id}「{r.name}」に違反するため実行していません。")
@@ -273,7 +273,7 @@ class GuardSession:
 
     # ---- Stop ------------------------------------------------------------
 
-    def obligations_message(self, rules: list[CompiledRule]) -> str:
+    def obligations_message(self, rules: list[Rule]) -> str:
         lines = ["まだ終了できません。次のルールの義務が未履行です。"]
         for r in rules:
             lines.append(f"- ルール {r.id}「{r.name}」: {r.description}")

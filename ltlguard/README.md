@@ -5,7 +5,8 @@ Rules over an agent's tool calls, written in LTLf (linear temporal logic over fi
 - **enforced at runtime** through agent hooks (a call that would make a rule unsatisfiable is denied, with a message that names the rule and lists what can be done instead), and
 - **recorded** as JSONL traces for later evaluation.
 
-The same rule file drives both.
+The same rule file drives both. [Spot](https://spot.lre.epita.fr/) does the logic: it parses the formulas,
+translates them to automata, and decides satisfiability; ltlguard only wires the automata to tool calls.
 
 ```yaml
 version: 1
@@ -21,7 +22,8 @@ rules:
     response: probe_ok
 ```
 
-Templates: `always`, `never`, `eventually`, `not_until`, `response`, `at_most_once`, `at_most` (with `count`).
+Templates (built with Spot's formula constructors; arguments are Boolean formulas parsed by Spot):
+`always`, `never`, `eventually`, `not_until`, `response`, `at_most_once`, `at_most` (with `count`).
 `on_violation`: `deny` (default) or `log_only` (shadow mode: record what would have been denied).
 
 What a proposition means is up to you: implement a *labeler* (`ltlguard.Labeler`) that maps a tool call
@@ -30,14 +32,18 @@ result propositions (known after it).
 
 ## How it works
 
-```
-[dev machine / CI]                            [runtime]
-rules.yaml --Spot--> DFA --precompute--> rules.dfa.json --> pure-Python monitor
-(ltlguard compile)                                          (no Spot import)
-```
+At startup each rule goes through `spot.parse_infix_psl` → `spot.ltlf_to_mtdfa` → `spot.minimize_mtdfa`
+→ `mtdfa.as_twa`. The result is a deterministic automaton whose states are labeled with the residual
+LTLf formula (what the rest of the run must satisfy) and whose transitions carry a final mark.
 
-- Each rule becomes a minimal complete DFA with, per state: `accepting`, `dead` (no way back to
-  acceptance), `permanent` (cannot leave acceptance) and `safe_next` (guard of non-dead moves).
+- A step intersects each transition's BDD guard with the BDD cube of the true propositions.
+- Accepted if the run ends now: the final mark of the last transition.
+- Definitively violated ("dead"): not accepted now and the residual formula is unsatisfiable
+  (`ltlf_to_mtdfa(residual).is_empty()`).
+- Definitively satisfied: accepted now and the residual formula is valid (`ltlf_to_mtdfa(!residual).is_empty()`).
+
+Monitoring:
+
 - **PreToolUse** previews one step with the call-time propositions. Result propositions are unknown,
   so a call is denied only if *every* combination of the possible result propositions leads to a dead
   state. State does not change at this point.
@@ -46,44 +52,35 @@ rules.yaml --Spot--> DFA --precompute--> rules.dfa.json --> pure-Python monitor
   obligation). At **Stop**, open obligations send the agent back (up to a limit).
 - Calls are serialized; every internal error or timeout is a denial (fail-closed). A tool can call
   `GuardSession.require_cleared()` so it refuses to run if a hook failed open.
-- The runtime refuses to load a `rules.dfa.json` whose recorded hash does not match `rules.yaml`.
+- Traces record each rule's residual formula after every step.
 
-Layout: `ltlguard/core` (guards, DFA, monitor, session; no SDK), `ltlguard/spec` (YAML, templates),
-`ltlguard/trace` (JSONL), `ltlguard/compile` (Spot; the only place that imports it),
-`ltlguard/adapters/claude_agent_sdk` (the only place that imports the Claude Agent SDK).
+Spot defines LTLf on non-empty traces; for the state before any event, weak operators (`G`, `W`, `R`,
+weak `X`) hold and strong ones (`F`, `U`, `M`, `X[!]`) do not.
+
+Layout: `ltlguard/spec` (YAML, templates), `ltlguard/core` (automata, monitor, session; no SDK),
+`ltlguard/trace` (JSONL), `ltlguard/adapters/claude_agent_sdk` (the only place that imports the
+Claude Agent SDK).
 
 ## Commands
 
 ```sh
-ltlguard compile rules.yaml -o rules.dfa.json   # needs Spot
-ltlguard verify  rules.yaml rules.dfa.json      # needs Spot; semantic comparison, for CI
-ltlguard check   rules.yaml rules.dfa.json      # no Spot; hash check
+ltlguard check rules.yaml                          # parse and translate every rule; summary
+ltlguard show  rules.yaml [--rule R1] [--format hoa|dot]   # Spot's automata, for review
 ```
 
-## Installing Spot (compiler only)
+## Installing Spot
 
-Spot (>= 2.14, with Python bindings) is not on PyPI. It is needed only to compile rules and to run the
-differential tests; the runtime never imports it.
+Spot (>= 2.14, with Python bindings) is not on PyPI. Use conda-forge (Linux x86_64/aarch64, macOS arm64):
 
-- macOS (Homebrew): `brew install spot`. The bindings are built for Homebrew's Python minor version
-  (2.16: Python 3.14). Use a venv of that version and add the path with a `.pth` file:
+```sh
+micromamba create -p ./.env -c conda-forge python=3.12 'spot>=2.14' pyyaml pytest pytest-asyncio
+./.env/bin/python -m pip install -e ./ltlguard
+```
 
-  ```sh
-  uv venv --python 3.14 .venv-spot
-  echo "$(brew --prefix spot)/lib/python3.14/site-packages" > .venv-spot/lib/python3.14/site-packages/spot-homebrew.pth
-  uv pip install --python .venv-spot -e ./ltlguard pytest
-  ```
-
-- conda / micromamba: `micromamba create -n spot -c conda-forge 'spot>=2.14' python pyyaml pytest`
-  (used in CI).
-- Debian/Ubuntu: LRDE's package repository, or build from source.
-
-Tests: `python -m pytest` in `ltlguard/`. Without Spot, the compiler and differential tests are skipped.
-The differential tests run each rule's DFA and Spot itself over all short traces and random longer
-ones, and check that acceptance and "dead" agree.
+Tests: `python -m pytest` in `ltlguard/`. The differential tests run each rule's monitor over all short
+traces and random longer ones and compare acceptance and "dead" with Spot's own judgment.
 
 ## License
 
-Spot is GPL-3.0-or-later. Only `ltlguard.compile` imports it; the runtime does not. The license of
-ltlguard as a whole (and whether the compiler should be a separate package) is to be decided before
-publishing.
+Spot is GPL-3.0-or-later, and ltlguard imports it at runtime. Take this into account when choosing
+ltlguard's license before publishing it as a package.

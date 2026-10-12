@@ -9,4 +9,4 @@ exec systemd-run --wait --pipe --collect --quiet \
   -p ProtectSystem=strict -p ProtectHome=read-only -p PrivateTmp=yes -p ReadWritePaths=/var/lib/blossoml-ops \
   -p UMask=0027 -p WorkingDirectory=/var/lib/blossoml-ops/work \
   -E BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml -E HOME=/var/lib/blossoml-ops \
-  /opt/blossoml-ops/current/venv/bin/python -I -m blossoml_ops.main manual --instruction "$1"
+  /opt/blossoml-ops/current/env/bin/python -I -m blossoml_ops.main manual --instruction "$1"

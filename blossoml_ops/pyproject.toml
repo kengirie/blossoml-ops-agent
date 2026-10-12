@@ -7,6 +7,7 @@ name = "blossoml-ops"
 version = "0.1.0"
 description = "Operations agent for the blossoML Blossom server"
 requires-python = ">=3.10"
+# Also requires Spot >= 2.14 with Python bindings (from conda-forge), through ltlguard.
 dependencies = [
     "ltlguard[sdk]",
     "claude-agent-sdk>=0.2",
@@ -25,7 +26,7 @@ test = ["pytest>=7", "pytest-asyncio>=0.23"]
 include = ["blossoml_ops*"]
 
 [tool.setuptools.package-data]
-blossoml_ops = ["prompt.md", "rules.yaml", "rules.dfa.json"]
+blossoml_ops = ["prompt.md", "rules.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

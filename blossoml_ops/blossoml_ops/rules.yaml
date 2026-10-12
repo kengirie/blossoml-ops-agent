@@ -1,6 +1,6 @@
 # LTL rules for blossoml-ops (design 6.8).
-# After editing, run:  ltlguard compile blossoml_ops/rules.yaml
-# The runtime refuses to start if rules.dfa.json was compiled from another version of this file.
+# Spot parses and translates these rules every time the agent starts.
+# After editing, check them with:  ltlguard check blossoml_ops/rules.yaml   (or `ltlguard show` for the automata)
 #
 # Propositions are defined in blossoml_ops/labeling.py.
 # Out of scope for now: R3 (rollback only after human approval) and the approval flow;

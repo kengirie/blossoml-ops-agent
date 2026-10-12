@@ -13,7 +13,7 @@ Group=blossoml-ops
 SupplementaryGroups=systemd-journal
 Environment=BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml
 Environment=HOME=/var/lib/blossoml-ops
-ExecStart=/opt/blossoml-ops/current/venv/bin/python -I -m blossoml_ops.main %i
+ExecStart=/opt/blossoml-ops/current/env/bin/python -I -m blossoml_ops.main %i
 WorkingDirectory=/var/lib/blossoml-ops/work
 TimeoutStartSec=20min
 

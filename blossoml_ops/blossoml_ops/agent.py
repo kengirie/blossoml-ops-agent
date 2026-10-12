@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ltlguard.core.dfa import CompiledRulesError, RuleSet, load_compiled
+from ltlguard.core.automaton import RuleSet, RulesError, load_rules
 from ltlguard.core.monitor import Monitor
 from ltlguard.core.session import GuardSession
 from ltlguard.trace.jsonl import TraceWriter
@@ -28,7 +28,6 @@ from blossoml_ops.tools import (
 
 PACKAGE_DIR = Path(__file__).parent
 RULES_YAML = PACKAGE_DIR / "rules.yaml"
-RULES_DFA = PACKAGE_DIR / "rules.dfa.json"
 PROMPT_MD = PACKAGE_DIR / "prompt.md"
 
 # Built-in Claude Code tools. `tools=[]` already removes them; listing them as
@@ -306,9 +305,9 @@ async def run_agent(
     allowed = allowed_tool_names(specs)
     labeler = OpsLabeler([s.name for s in specs], representative_args(specs))
     try:
-        ruleset = load_compiled(RULES_DFA, RULES_YAML)
-    except CompiledRulesError as e:
-        # Refuse to run with stale or broken rules, but still tell the operator.
+        ruleset = load_rules(RULES_YAML)
+    except RulesError as e:
+        # Refuse to run with broken rules, but still tell the operator.
         trace.write("refused", problems=["rules"])
         alerts("critical", "ルールを読み込めないため実行しませんでした", str(e)[:500])
         report.exit_code = EXIT_CONFIG

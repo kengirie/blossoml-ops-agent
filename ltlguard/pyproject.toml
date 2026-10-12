@@ -7,13 +7,13 @@ name = "ltlguard"
 version = "0.1.0"
 description = "Enforce and evaluate LTLf rules over agent tool calls"
 requires-python = ">=3.10"
+# Also requires Spot >= 2.14 with its Python bindings (modules `spot` and `buddy`).
+# Spot is not on PyPI: install it from conda-forge (see README.md).
 dependencies = ["pyyaml>=6"]
 
 [project.optional-dependencies]
 # The Claude Agent SDK adapter. The core never imports the SDK.
 sdk = ["claude-agent-sdk>=0.1"]
-# Spot (>= 2.14, with Python bindings) is needed only by `ltlguard compile`
-# and `ltlguard verify`. It is not installable from PyPI; see README.md.
 test = ["pytest>=7", "pytest-asyncio>=0.23"]
 
 [project.scripts]
@@ -24,4 +24,3 @@ include = ["ltlguard*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-filterwarnings = ["ignore:Unknown config option:pytest.PytestConfigWarning"]

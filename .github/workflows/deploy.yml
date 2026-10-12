@@ -4,10 +4,14 @@ name: Deploy blossoml-ops
 # users, ACLs, sudoers, the firewall, the proxy and systemd units are set up by
 # hand (blossoml_ops/deploy/README.md) and cannot be changed from here.
 #
+# The runtime is a conda environment (Python + Spot from conda-forge + the app),
+# built here on the production architecture and packed with conda-pack. The
+# server only unpacks it: no pip, no network, no build tools.
+#
 # Repository variables (Settings > Variables):
 #   PROD_RUNNER  runner with the production CPU architecture
 #                (ubuntu-24.04 for x86_64, ubuntu-24.04-arm for aarch64)
-#   PROD_PYTHON  production Python minor version, e.g. "3.12"
+#   PROD_PYTHON  Python minor version for the runtime env, e.g. "3.12"
 # Secrets: OPS_SSH_KEY, OPS_HOST, OPS_USER
 
 on:
@@ -18,25 +22,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ vars.PROD_PYTHON || '3.12' }}
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ./ltlguard -e './blossoml_ops[test]' pytest pytest-asyncio
-      - name: ltlguard tests (runtime; Spot tests are skipped here)
-        run: cd ltlguard && python -m pytest -q
-      - name: blossoml-ops tests (incl. output guard and NIP-44 vectors)
-        run: cd blossoml_ops && python -m pytest -q
-      - name: Rule hash check (no Spot)
-        run: python -m ltlguard check blossoml_ops/blossoml_ops/rules.yaml blossoml_ops/blossoml_ops/rules.dfa.json
-
-  rules:
-    # Recompile the rules with Spot and fail if the committed rules.dfa.json differs.
+    # Spot is required everywhere now (rules are translated at runtime), so tests run in a conda env.
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -45,59 +31,52 @@ jobs:
       - uses: actions/checkout@v4
       - uses: mamba-org/setup-micromamba@v2
         with:
-          environment-name: spot
+          environment-name: ops
           create-args: >-
             -c conda-forge
-            python=3.12
+            python=${{ vars.PROD_PYTHON || '3.12' }}
             spot>=2.14
-            pyyaml
-            pytest
-      - name: Install ltlguard
-        run: pip install --no-deps -e ./ltlguard
-      - name: Compiler and differential tests against Spot
+            pip
+      - name: Install
+        run: pip install -e ./ltlguard -e './blossoml_ops[test]'
+      - name: ltlguard tests (incl. differential tests against Spot)
         run: cd ltlguard && python -m pytest -q
-      - name: Committed DFA matches rules.yaml
-        run: python -m ltlguard verify blossoml_ops/blossoml_ops/rules.yaml blossoml_ops/blossoml_ops/rules.dfa.json
+      - name: blossoml-ops tests (incl. output guard and NIP-44 vectors)
+        run: cd blossoml_ops && python -m pytest -q
+      - name: Rules translate with Spot
+        run: python -m ltlguard check blossoml_ops/blossoml_ops/rules.yaml
 
   build:
-    needs: [test, rules]
+    needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ vars.PROD_RUNNER || 'ubuntu-24.04' }}
+    defaults:
+      run:
+        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: mamba-org/setup-micromamba@v2
         with:
-          python-version: ${{ vars.PROD_PYTHON || '3.12' }}
-      - name: Build the wheelhouse (all dependencies as wheels for this platform)
+          environment-name: pack
+          create-args: -c conda-forge conda-pack
+      - name: Build the runtime environment (Python, Spot, dependencies, the app)
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME}"
-          mkdir -p dist/wheelhouse dist/app
-          python -m pip install --upgrade pip wheel
-          pip wheel --wheel-dir dist/wheelhouse ./ltlguard './blossoml_ops'
-          # Refuse anything that would need building on the server.
-          if ls dist/wheelhouse | grep -v '\.whl$'; then echo "non-wheel artifacts" >&2; exit 1; fi
-          # A hash-pinned lock of the third-party wheels.
-          python - <<'PY'
-          import hashlib, pathlib
-          lines = []
-          for whl in sorted(pathlib.Path("dist/wheelhouse").glob("*.whl")):
-              name, version = whl.name.split("-")[:2]
-              if name in ("ltlguard", "blossoml_ops"):
-                  continue
-              digest = hashlib.sha256(whl.read_bytes()).hexdigest()
-              lines.append(f"{name}=={version} --hash=sha256:{digest}")
-          pathlib.Path("dist/app/requirements.lock").write_text("\n".join(lines) + "\n")
-          PY
-          cp blossoml_ops/blossoml_ops/prompt.md blossoml_ops/blossoml_ops/rules.yaml blossoml_ops/blossoml_ops/rules.dfa.json dist/app/
+          micromamba create -y -p "$PWD/runtime" -c conda-forge \
+            "python=${{ vars.PROD_PYTHON || '3.12' }}" "spot>=2.14" pip
+          ./runtime/bin/python -m pip install --no-cache-dir ./ltlguard ./blossoml_ops
+          ./runtime/bin/python -m ltlguard check blossoml_ops/blossoml_ops/rules.yaml
+          mkdir -p dist
+          conda-pack -p "$PWD/runtime" -o dist/env.tar.gz --ignore-missing-files
           echo "$VERSION" > dist/VERSION
           cd dist
-          find app wheelhouse VERSION -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
-          tar -czf "../blossoml-ops-${VERSION}.tar.gz" app wheelhouse VERSION SHA256SUMS
+          sha256sum env.tar.gz VERSION > SHA256SUMS
+          tar -cf "../blossoml-ops-${VERSION}.tar" env.tar.gz VERSION SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: package
-          path: blossoml-ops-*.tar.gz
+          path: blossoml-ops-*.tar
 
   deploy:
     needs: build
@@ -116,9 +95,9 @@ jobs:
           ssh-keyscan -H "${{ secrets.OPS_HOST }}" >> ~/.ssh/known_hosts
       - name: Upload
         run: |
-          scp -i ~/.ssh/deploy_key blossoml-ops-*.tar.gz blossoml_ops/deploy/remote-install.sh \
+          scp -i ~/.ssh/deploy_key blossoml-ops-*.tar blossoml_ops/deploy/remote-install.sh \
             "${{ secrets.OPS_USER }}@${{ secrets.OPS_HOST }}:/opt/blossoml-ops/incoming/"
       - name: Install (selfcheck, then switch `current`)
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.OPS_USER }}@${{ secrets.OPS_HOST }}" \
-            "bash /opt/blossoml-ops/incoming/remote-install.sh /opt/blossoml-ops/incoming/blossoml-ops-${GITHUB_REF_NAME}.tar.gz"
+            "bash /opt/blossoml-ops/incoming/remote-install.sh /opt/blossoml-ops/incoming/blossoml-ops-${GITHUB_REF_NAME}.tar"

@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from ltlguard.core.dfa import load_compiled
+from conftest import FIXTURE_RULES
+from ltlguard.core.automaton import load_rules
 from ltlguard.core.labeling import Candidate
 from ltlguard.core.monitor import Monitor
 from ltlguard.core.session import GuardSession, NotCleared
 from ltlguard.trace.jsonl import TraceWriter, read_events
 
-DATA = Path(__file__).parent / "data"
 
 
 class FakeLabeler:
@@ -59,7 +59,7 @@ class FakeLabeler:
 
 @pytest.fixture
 def env(tmp_path):
-    rs = load_compiled(DATA / "fixture_rules.dfa.json", DATA / "fixture_rules.yaml")
+    rs = load_rules(FIXTURE_RULES)
     alerts = []
     trace = TraceWriter(tmp_path / "traces", "s1")
     session = GuardSession(

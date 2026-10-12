@@ -1,5 +1,4 @@
-# Fixture for runtime tests that run without Spot.
-# Regenerate: ltlguard compile tests/data/fixture_rules.yaml
+# Fixture rules for the monitor and session tests.
 version: 1
 rules:
   - id: A

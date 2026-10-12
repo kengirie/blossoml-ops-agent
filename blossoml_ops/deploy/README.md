@@ -7,8 +7,9 @@
 
 ```sh
 uname -m                 # x86_64 / aarch64 → CI の PROD_RUNNER を合わせる
-python3 --version        # 3.10 以上 → CI の PROD_PYTHON を合わせる
-sudo apt-get install -y python3-venv acl tinyproxy nftables
+# Python と Spot は CI が作る conda 環境に入っているので、本番の Python は使わない
+sudo apt-get install -y acl tinyproxy nftables
+df -h /opt                # 1 リリースは展開後に約 700MB（Python・Spot・同梱の Claude Code CLI を含む）。直近 3 版を残す
 ```
 
 ## 1. blossoML 側の前提（設計書 8 章）
@@ -109,7 +110,7 @@ sudo install -d -o ubuntu -g ubuntu -m 0755 /opt/blossoml-ops /opt/blossoml-ops/
 sudo install -o root -g root -m 0755 bin/run-manual /opt/blossoml-ops/bin/run-manual
 ```
 
-以降は `v*` タグの push で CI が配備します（`remote-install.sh`）。ここで最初のタグを push して初回の配備を済ませます。配備ユーザー（ubuntu）は `sudo -u blossoml-ops` で selfcheck を実行できる必要があります。
+以降は `v*` タグの push で CI が配備します（`remote-install.sh`）。配備物は conda-pack で固めた実行環境（Python、conda-forge の Spot、依存パッケージ、本体）で、本番では展開して `conda-unpack` するだけです（pip もネットワークも使いません）。ここで最初のタグを push して初回の配備を済ませます。配備ユーザー（ubuntu）は `sudo -u blossoml-ops` で selfcheck を実行できる必要があります。
 `blossoml-ops` ユーザーは `/opt/blossoml-ops` を読めるだけで、自分のコード・ルール・DFA を書き換えられません。
 
 ## 6. 秘密情報（7.5）
@@ -118,7 +119,7 @@ sudo install -o root -g root -m 0755 bin/run-manual /opt/blossoml-ops/bin/run-ma
 # Anthropic API キー
 sudo install -o blossoml-ops -g blossoml-ops -m 0400 /dev/stdin /etc/blossoml-ops/anthropic_api_key <<< 'sk-ant-...'
 # bot 専用の Nostr 鍵（新規生成。運営者や他用途の鍵は使い回さない）
-sudo -u blossoml-ops /opt/blossoml-ops/current/venv/bin/python -m blossoml_ops.main keygen --out /var/lib/blossoml-ops/nsec.tmp
+sudo -u blossoml-ops /opt/blossoml-ops/current/env/bin/python -m blossoml_ops.main keygen --out /var/lib/blossoml-ops/nsec.tmp
 sudo install -o blossoml-ops -g blossoml-ops -m 0400 /var/lib/blossoml-ops/nsec.tmp /etc/blossoml-ops/nostr_bot_nsec
 sudo rm /var/lib/blossoml-ops/nsec.tmp
 ```
@@ -127,9 +128,9 @@ sudo rm /var/lib/blossoml-ops/nsec.tmp
 
 ```sh
 sudo -u blossoml-ops env BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml \
-  /opt/blossoml-ops/current/venv/bin/python -m blossoml_ops.main selfcheck
+  /opt/blossoml-ops/current/env/bin/python -m blossoml_ops.main selfcheck
 sudo -u blossoml-ops env BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml \
-  /opt/blossoml-ops/current/venv/bin/python -m blossoml_ops.main publish-profile
+  /opt/blossoml-ops/current/env/bin/python -m blossoml_ops.main publish-profile
 ```
 
 運営者側: 運営者の kind 10050（DM 受信リレー）に、`relay.primal.net` / `relay.damus.io` / `nos.lol` / `nostr.mom` の少なくとも 1 つが含まれていることを確認してください。

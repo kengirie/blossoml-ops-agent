@@ -4,12 +4,12 @@ import threading
 
 import pytest
 
-from ltlguard.core.dfa import load_compiled
+from ltlguard.core.automaton import load_rules
 from ltlguard.core.monitor import Monitor
 from ltlguard.core.session import GuardSession
 from ltlguard.trace.jsonl import TraceWriter, read_events
 
-from blossoml_ops.agent import RULES_DFA, RULES_YAML
+from blossoml_ops.agent import RULES_YAML
 from blossoml_ops.guard import check_output
 from blossoml_ops.labeling import OpsLabeler, full_name
 from blossoml_ops.tools import MetricsHistory, ToolContext, build_specs, db, probe, storage, system, write_ops
@@ -41,7 +41,7 @@ def ctx(config, tmp_path):
         labeler = OpsLabeler([s.name for s in specs])
         trace = TraceWriter(tmp_path / "traces", "test")
         alerts = []
-        session = GuardSession(Monitor(load_compiled(RULES_DFA, RULES_YAML)), labeler, trace, on_alert=lambda *a: alerts.append(a))
+        session = GuardSession(Monitor(load_rules(RULES_YAML)), labeler, trace, on_alert=lambda *a: alerts.append(a))
         context = ToolContext(
             config=c, session=session, trace=trace, notifier=None,
             history=MetricsHistory(tmp_path / "state" / "metrics.json"),

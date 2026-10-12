@@ -15,28 +15,29 @@ Example::
         trigger: restart
         response: probe_ok
 
-Formulas use Spot's LTLf syntax: ``!``, ``&``, ``|``, ``->``, ``<->``, ``X``
-(weak next), ``X[!]`` (strong next), ``F``, ``G``, ``U``, ``W``, ``R``, ``M``.
-Proposition names are lowercase identifiers; their meaning is defined by the
-labeling function, not here.
+Formulas are parsed by Spot (LTLf syntax: ``!``, ``&``, ``|``, ``->``, ``<->``,
+``X`` (weak next), ``X[!]`` (strong next), ``F``, ``G``, ``U``, ``W``, ``R``,
+``M``). Template arguments are Boolean formulas, also parsed by Spot, and
+templates are built with Spot's formula constructors. Proposition names are
+lowercase identifiers; their meaning is defined by the labeling function.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+import spot
 import yaml
 
-from ltlguard.core.dfa import ON_VIOLATION_VALUES
-from ltlguard.core.guard_expr import PROP_NAME_RE, RESERVED_NAMES
-
-RULE_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_'.-]{0,31}$")
+ON_VIOLATION_VALUES = ("deny", "log_only")
 ALERT_VALUES = (None, "info", "warning", "critical")
+RULE_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_'.-]{0,31}$")
+PROP_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
-# Arguments are boolean expressions over propositions, e.g. "restart | rollback".
 TEMPLATES: dict[str, tuple[str, ...]] = {
     "always": ("prop",),
     "never": ("prop",),
@@ -48,11 +49,6 @@ TEMPLATES: dict[str, tuple[str, ...]] = {
 }
 _MAX_AT_MOST = 20
 
-# Words that may appear in formulas without being propositions.
-_LTL_KEYWORDS = frozenset({"X", "F", "G", "U", "W", "R", "M", "true", "false"})
-_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_ARG_CHARS_RE = re.compile(r"^[a-z0-9_()!&|\s]+$")
-
 
 class SpecError(ValueError):
     pass
@@ -63,7 +59,7 @@ class RuleSpec:
     id: str
     name: str
     description: str
-    formula: str
+    formula: "spot.formula"
     on_violation: str
     alert: str | None
     source_template: str | None = None
@@ -73,51 +69,67 @@ class RuleSpec:
 class Spec:
     version: int
     rules: tuple[RuleSpec, ...]
+    source_sha256: str
 
 
-def _check_bool_arg(name: str, value: Any) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise SpecError(f"template argument {name!r} must be a non-empty string")
-    if not _ARG_CHARS_RE.match(value):
-        raise SpecError(f"template argument {name!r} may only use propositions, !, &, |, parentheses: {value!r}")
-    return f"({value.strip()})"
+def parse_formula(text: str) -> "spot.formula":
+    """Parse an LTLf formula with Spot."""
+    if not isinstance(text, str) or not text.strip():
+        raise SpecError("formula must be a non-empty string")
+    parsed = spot.parse_infix_psl(text)
+    if parsed.errors:
+        raise SpecError(f"cannot parse formula {text!r}")
+    f = parsed.f
+    if not f.is_ltl_formula():
+        raise SpecError(f"not an LTL formula: {text!r}")
+    return f
 
 
-def expand_template(template: str, args: Mapping[str, Any]) -> str:
+def _boolean_arg(name: str, value: Any) -> "spot.formula":
+    f = parse_formula(value) if isinstance(value, str) else None
+    if f is None or not f.is_boolean():
+        raise SpecError(f"template argument {name!r} must be a Boolean formula over propositions")
+    return f
+
+
+def expand_template(template: str, args: Mapping[str, Any]) -> "spot.formula":
+    F = spot.formula
     if template not in TEMPLATES:
         raise SpecError(f"unknown template {template!r} (known: {', '.join(sorted(TEMPLATES))})")
     if template == "always":
-        return f"G{_check_bool_arg('prop', args.get('prop'))}"
+        return F.G(_boolean_arg("prop", args.get("prop")))
     if template == "never":
-        return f"G!{_check_bool_arg('prop', args.get('prop'))}"
+        return F.G(F.Not(_boolean_arg("prop", args.get("prop"))))
     if template == "eventually":
-        return f"F{_check_bool_arg('prop', args.get('prop'))}"
+        return F.F(_boolean_arg("prop", args.get("prop")))
     if template == "not_until":
-        a = _check_bool_arg("prop", args.get("prop"))
-        b = _check_bool_arg("until", args.get("until"))
-        return f"!{a} W {b}"
+        a = _boolean_arg("prop", args.get("prop"))
+        b = _boolean_arg("until", args.get("until"))
+        return F.W(F.Not(a), b)
     if template == "response":
-        a = _check_bool_arg("trigger", args.get("trigger"))
-        b = _check_bool_arg("response", args.get("response"))
-        return f"G({a} -> F{b})"
+        a = _boolean_arg("trigger", args.get("trigger"))
+        b = _boolean_arg("response", args.get("response"))
+        return F.G(F.Implies(a, F.F(b)))
     if template == "at_most_once":
         return expand_template("at_most", {"prop": args.get("prop"), "count": 1})
     if template == "at_most":
-        a = _check_bool_arg("prop", args.get("prop"))
+        a = _boolean_arg("prop", args.get("prop"))
         n = args.get("count")
         if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= _MAX_AT_MOST:
             raise SpecError(f"at_most: count must be an integer in 0..{_MAX_AT_MOST}")
         # f_0 = G !a ; f_k = G(a -> X f_{k-1})   (X is the weak next of LTLf)
-        f = f"G!{a}"
+        f = F.G(F.Not(a))
         for _ in range(n):
-            f = f"G({a} -> X({f}))"
+            f = F.G(F.Implies(a, F.X(f)))
         return f
     raise AssertionError(template)
 
 
-def formula_props(formula: str) -> frozenset[str]:
-    """Identifiers in a formula that are propositions (best effort; Spot is authoritative)."""
-    return frozenset(w for w in _IDENT_RE.findall(formula) if w not in _LTL_KEYWORDS)
+def atomic_props(f: "spot.formula") -> frozenset[str]:
+    return frozenset(str(ap) for ap in spot.atomic_prop_collect(f))
+
+
+_RULE_KEYS = ("id", "name", "description", "formula", "template", "on_violation", "alert")
 
 
 def _parse_rule(raw: Any, index: int) -> RuleSpec:
@@ -130,28 +142,25 @@ def _parse_rule(raw: Any, index: int) -> RuleSpec:
     has_template = "template" in raw
     if has_formula == has_template:
         raise SpecError(f"rule {rid}: exactly one of 'formula' or 'template' is required")
-    template_args = {k: v for k, v in raw.items() if k not in ("id", "name", "description", "formula", "template", "on_violation", "alert")}
-    if has_formula:
-        if template_args:
-            raise SpecError(f"rule {rid}: unknown keys {sorted(template_args)}")
-        formula = raw["formula"]
-        if not isinstance(formula, str) or not formula.strip():
-            raise SpecError(f"rule {rid}: formula must be a non-empty string")
-        formula = formula.strip()
-        template = None
-    else:
-        template = raw["template"]
-        expected = TEMPLATES.get(template)
-        if expected is None:
-            raise SpecError(f"rule {rid}: unknown template {template!r}")
-        if set(template_args) != set(expected):
-            raise SpecError(f"rule {rid}: template {template} takes {list(expected)}, got {sorted(template_args)}")
-        try:
+    template_args = {k: v for k, v in raw.items() if k not in _RULE_KEYS}
+    try:
+        if has_formula:
+            if template_args:
+                raise SpecError(f"unknown keys {sorted(template_args)}")
+            formula = parse_formula(raw["formula"])
+            template = None
+        else:
+            template = raw["template"]
+            expected = TEMPLATES.get(template)
+            if expected is None:
+                raise SpecError(f"unknown template {template!r}")
+            if set(template_args) != set(expected):
+                raise SpecError(f"template {template} takes {list(expected)}, got {sorted(template_args)}")
             formula = expand_template(template, template_args)
-        except SpecError as e:
-            raise SpecError(f"rule {rid}: {e}") from None
-    for p in formula_props(formula):
-        if not PROP_NAME_RE.match(p) or p in RESERVED_NAMES:
+    except SpecError as e:
+        raise SpecError(f"rule {rid}: {e}") from None
+    for p in atomic_props(formula):
+        if not PROP_NAME_RE.match(p):
             raise SpecError(f"rule {rid}: invalid proposition name {p!r} (use lowercase snake_case)")
     on_violation = raw.get("on_violation", "deny")
     if on_violation not in ON_VIOLATION_VALUES:
@@ -174,7 +183,7 @@ def _parse_rule(raw: Any, index: int) -> RuleSpec:
     )
 
 
-def parse_spec(data: Any) -> Spec:
+def parse_spec(data: Any, source_sha256: str = "") -> Spec:
     if not isinstance(data, Mapping):
         raise SpecError("rule file must be a mapping")
     if data.get("version") != 1:
@@ -186,9 +195,13 @@ def parse_spec(data: Any) -> Spec:
     ids = [r.id for r in rules]
     if len(set(ids)) != len(ids):
         raise SpecError("duplicate rule ids")
-    return Spec(version=1, rules=rules)
+    return Spec(version=1, rules=rules, source_sha256=source_sha256)
 
 
 def load_spec(path: str | Path) -> Spec:
-    with open(path, encoding="utf-8") as f:
-        return parse_spec(yaml.safe_load(f))
+    try:
+        source = Path(path).read_bytes()
+        data = yaml.safe_load(source.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as e:
+        raise SpecError(f"cannot read {path}: {e}") from None
+    return parse_spec(data, hashlib.sha256(source).hexdigest())

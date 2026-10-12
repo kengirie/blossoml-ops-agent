@@ -2,11 +2,11 @@
 
 The implementation of `blossoml-ops-design.md`:
 
-- `ltlguard/`: LTLf rules over agent tool calls (Spot compiler, pure-Python runtime, Claude Agent SDK adapter, JSONL traces). See `ltlguard/README.md`.
+- `ltlguard/`: LTLf rules over agent tool calls. Spot parses and translates the rules and steps the automata at runtime; ltlguard adds the hook adapter for the Claude Agent SDK and JSONL traces. See `ltlguard/README.md`.
 - `blossoml_ops/`: the operations agent for the blossoML production server (8 read-only tools, 3 phase-2 write tools, output guard, NIP-17 notifications, daily / postdeploy / manual modes).
 - `blossoml_ops/deploy/`: production setup (users and ACLs, proxy and firewall, systemd, sudoers, root-owned scripts, `remote-install.sh`). See `blossoml_ops/deploy/README.md`.
 - `blossoml-patches/`: the patch for blossoML itself (blob files created with mode 0640).
-- `.github/workflows/deploy.yml`: tests → Spot rule verification → wheelhouse → deploy.
+- `.github/workflows/deploy.yml`: tests (in a conda env with Spot) → a conda-pack'ed runtime env built on the production architecture → deploy.
 
 ## Scope decisions
 
@@ -15,17 +15,19 @@ The implementation of `blossoml-ops-design.md`:
 - **R9 added**: at most 5 warning/critical notifications (design 6.4 asks for it to be expressed in LTL too).
 - Phase 2 (write tools, R1/R2/R4/R5) is implemented but disabled by default (`phase2.enabled: false`).
 - Phase 3 (evaluation mode) is not implemented; traces already contain what it needs.
+- **Spot is used at runtime too** (a change from design 5.3, which kept Spot out of production). Rules are translated from `rules.yaml` at every start (about 60 ms, about 20 MB of memory), so there is no precompiled `rules.dfa.json`, no hand-written guard parser and no hand-written automaton algorithms. Production gets Spot through the conda-forge environment shipped by CI.
 
 ## Development
 
 ```sh
-uv venv --python 3.12 .venv
-uv pip install --python .venv -e ./ltlguard -e './blossoml_ops[test]' --config-settings editable_mode=compat
-(cd ltlguard && ../.venv/bin/python -m pytest -q)
-(cd blossoml_ops && ../.venv/bin/python -m pytest -q)
+micromamba create -p ./.env -c conda-forge python=3.12 'spot>=2.14' pip
+./.env/bin/python -m pip install -e ./ltlguard -e './blossoml_ops[test]' --config-settings editable_mode=compat
+(cd ltlguard && ../.env/bin/python -m pytest -q)
+(cd blossoml_ops && ../.env/bin/python -m pytest -q)
 
-# Rules: edit blossoml_ops/blossoml_ops/rules.yaml, then (needs Spot, see ltlguard/README.md)
-.venv-spot/bin/python -m ltlguard compile blossoml_ops/blossoml_ops/rules.yaml
+# After editing blossoml_ops/blossoml_ops/rules.yaml
+./.env/bin/python -m ltlguard check blossoml_ops/blossoml_ops/rules.yaml
+./.env/bin/python -m ltlguard show blossoml_ops/blossoml_ops/rules.yaml --rule R1
 ```
 
 `editable_mode=compat` matters: the project directories `ltlguard/` and `blossoml_ops/` would otherwise

@@ -250,11 +250,11 @@ async def test_traced_args_are_checked(config, tmp_path):
     assert client.results[0][1]["error"] == "invalid_arguments"
 
 
-async def test_stale_rules_refuse_and_alert(config, tmp_path, monkeypatch):
+async def test_broken_rules_refuse_and_alert(config, tmp_path, monkeypatch):
     import blossoml_ops.agent as agent_mod
 
     edited = tmp_path / "rules.yaml"
-    edited.write_text(agent_mod.RULES_YAML.read_text() + "\n# edited without recompiling\n")
+    edited.write_text(agent_mod.RULES_YAML.read_text().replace("template: eventually", "formula: 'F (notified'", 1))
     monkeypatch.setattr(agent_mod, "RULES_YAML", edited)
     pub = make_publisher()
     report = await run_agent(config(), "daily", api_key="k", nostr_secret=generate_secret(),

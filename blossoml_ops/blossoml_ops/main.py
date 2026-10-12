@@ -25,8 +25,6 @@ def _print(obj) -> None:
 
 
 def cmd_run(args) -> int:
-    from ltlguard.core.dfa import CompiledRulesError
-
     from blossoml_ops.agent import EXIT_CONFIG, run_agent
     from blossoml_ops.notify.keys import parse_secret_key
 
@@ -40,11 +38,7 @@ def cmd_run(args) -> int:
     instruction = None
     if args.mode == "manual":
         instruction = args.instruction if args.instruction else sys.stdin.read()
-    try:
-        report = asyncio.run(run_agent(cfg, args.mode, instruction, api_key=api_key, nostr_secret=secret))
-    except CompiledRulesError as e:
-        print(f"rules error: {e}", file=sys.stderr)
-        return EXIT_CONFIG
+    report = asyncio.run(run_agent(cfg, args.mode, instruction, api_key=api_key, nostr_secret=secret))
     _print({"run": report.run_id, "exit_code": report.exit_code, "result": report.result_subtype,
             "turns": report.num_turns, "cost_usd": report.cost_usd, "notes": report.notes})
     return report.exit_code
@@ -53,7 +47,7 @@ def cmd_run(args) -> int:
 def selfcheck(config_path: str, skip_secrets: bool = False) -> list[str]:
     """Checks that need no network: configuration, rules, tool/rule consistency,
     SDK options (built-in tools disabled etc.)."""
-    from ltlguard.core.dfa import CompiledRulesError, load_compiled
+    from ltlguard.core.automaton import RulesError, load_rules
     from ltlguard.core.monitor import Monitor
     from ltlguard.core.session import GuardSession
     from ltlguard.adapters.claude_agent_sdk import ClaudeAgentSdkAdapter
@@ -68,8 +62,8 @@ def selfcheck(config_path: str, skip_secrets: bool = False) -> list[str]:
     except ConfigError as e:
         return [f"config: {e}"]
     try:
-        ruleset = load_compiled(agent.RULES_DFA, agent.RULES_YAML)
-    except CompiledRulesError as e:
+        ruleset = load_rules(agent.RULES_YAML)
+    except RulesError as e:
         return [f"rules: {e}"]
 
     specs = build_specs(cfg.phase2_enabled)

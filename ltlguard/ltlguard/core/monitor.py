@@ -17,7 +17,7 @@ import itertools
 from dataclasses import dataclass, field
 from typing import AbstractSet, Iterable, Mapping, Sequence
 
-from ltlguard.core.dfa import CompiledRule, RuleSet
+from ltlguard.core.automaton import Rule, RuleSet, RuleState
 from ltlguard.core.labeling import Candidate
 
 # Bound on the number of result propositions considered per call at preview.
@@ -31,21 +31,20 @@ class Verdict(str, enum.Enum):
     TENTATIVE_VIOLATION = "tentative_violation"   # 暫定違反（未履行の義務あり）
 
 
-def verdict_of(rule: CompiledRule, state: int) -> Verdict:
-    s = rule.states[state]
-    if s.dead:
+def verdict_of(rule: Rule, state: RuleState) -> Verdict:
+    if rule.dead(state):
         return Verdict.VIOLATED
-    if s.permanent:
+    if rule.permanent(state):
         return Verdict.SATISFIED
-    if s.accepting:
+    if rule.accepting(state):
         return Verdict.TENTATIVE_OK
     return Verdict.TENTATIVE_VIOLATION
 
 
 @dataclass
 class PreviewResult:
-    denied_by: list[CompiledRule] = field(default_factory=list)      # enforced rules that would be violated
-    shadow_denied_by: list[CompiledRule] = field(default_factory=list)  # log_only rules that would be violated
+    denied_by: list[Rule] = field(default_factory=list)      # enforced rules that would be violated
+    shadow_denied_by: list[Rule] = field(default_factory=list)  # log_only rules that would be violated
 
     @property
     def allowed(self) -> bool:
@@ -62,28 +61,29 @@ def _subsets(props: AbstractSet[str]) -> Iterable[frozenset[str]]:
 
 
 class Monitor:
-    def __init__(self, ruleset: RuleSet, states: Mapping[str, int] | None = None):
+    def __init__(self, ruleset: RuleSet, states: Mapping[str, RuleState | dict] | None = None):
         self.ruleset = ruleset
-        self.states: dict[str, int] = {r.id: r.initial for r in ruleset.rules}
+        self.states: dict[str, RuleState] = {r.id: r.initial for r in ruleset.rules}
         if states:
             for rid, st in states.items():
                 rule = ruleset.by_id(rid)
-                if not 0 <= st < len(rule.states):
-                    raise ValueError(f"state {st} out of range for rule {rid}")
+                st = st if isinstance(st, RuleState) else RuleState.from_json(st)
+                if not -1 <= st.node < rule.automaton.num_states():
+                    raise ValueError(f"state {st.node} out of range for rule {rid}")
                 self.states[rid] = st
         self.steps = 0
 
     @property
-    def rules(self) -> Sequence[CompiledRule]:
+    def rules(self) -> Sequence[Rule]:
         return self.ruleset.rules
 
-    def _would_violate(self, rule: CompiledRule, call_props: frozenset[str], possible: frozenset[str]) -> bool:
+    def _would_violate(self, rule: Rule, call_props: frozenset[str], possible: frozenset[str]) -> bool:
         current = self.states[rule.id]
-        if rule.states[current].dead:
+        if rule.dead(current):
             # Already violated (and recorded). It no longer gates further calls.
             return False
         for extra in _subsets(possible & rule.aps):
-            if not rule.states[rule.step(current, call_props | extra)].dead:
+            if not rule.dead(rule.step(current, call_props | extra)):
                 return False
         return True
 
@@ -96,14 +96,11 @@ class Monitor:
                 (out.denied_by if rule.enforced else out.shadow_denied_by).append(rule)
         return out
 
-    def commit(self, props: AbstractSet[str]) -> list[CompiledRule]:
+    def commit(self, props: AbstractSet[str]) -> list[Rule]:
         """Advance every rule by one step. Returns rules that became violated by this step."""
         props = frozenset(props)
         new_states = {r.id: r.step(self.states[r.id], props) for r in self.rules}
-        newly = [
-            r for r in self.rules
-            if r.states[new_states[r.id]].dead and not r.states[self.states[r.id]].dead
-        ]
+        newly = [r for r in self.rules if r.dead(new_states[r.id]) and not r.dead(self.states[r.id])]
         self.states = new_states
         self.steps += 1
         return newly
@@ -111,17 +108,16 @@ class Monitor:
     def verdicts(self) -> dict[str, Verdict]:
         return {r.id: verdict_of(r, self.states[r.id]) for r in self.rules}
 
-    def pending_obligations(self) -> list[CompiledRule]:
+    def pending_obligations(self) -> list[Rule]:
         """Enforced rules that would be violated if the run ended now (but still can be met)."""
         return [r for r in self.rules if r.enforced and verdict_of(r, self.states[r.id]) is Verdict.TENTATIVE_VIOLATION]
 
-    def violated(self) -> list[CompiledRule]:
-        return [r for r in self.rules if r.states[self.states[r.id]].dead]
+    def violated(self) -> list[Rule]:
+        return [r for r in self.rules if r.dead(self.states[r.id])]
 
     def allowed_candidates(self, candidates: Iterable[tuple[Candidate, frozenset[str], frozenset[str]]]) -> list[str]:
         """Labels of candidates (with their call props and possible result props)
-        that no enforced rule would deny. This is the intersection of the rules'
-        ``safe_next`` sets, evaluated on each candidate."""
+        that no enforced rule would deny."""
         out = []
         for cand, call, possible in candidates:
             if self.preview(call, possible).allowed:
@@ -132,12 +128,14 @@ class Monitor:
         return {
             "source_sha256": self.ruleset.source_sha256,
             "steps": self.steps,
-            "states": dict(self.states),
+            "states": {k: v.to_json() for k, v in self.states.items()},
             "verdicts": {k: v.value for k, v in self.verdicts().items()},
         }
 
     def describe(self) -> dict[str, dict]:
-        return {
-            rid: {"state": st, "verdict": verdict_of(self.ruleset.by_id(rid), st).value}
-            for rid, st in self.states.items()
-        }
+        """Per rule: the residual formula (what the rest of the run must satisfy) and the verdict."""
+        out = {}
+        for rid, st in self.states.items():
+            rule = self.ruleset.by_id(rid)
+            out[rid] = {"residual": rule.residual(st), "verdict": verdict_of(rule, st).value}
+        return out

@@ -1,20 +1,22 @@
-"""The real rules.yaml / rules.dfa.json wired to the real labeler."""
+"""The real rules.yaml (translated by Spot) wired to the real labeler."""
 
 import pytest
 
-from ltlguard.core.dfa import load_compiled
+from ltlguard.core.automaton import load_rules
 from ltlguard.core.monitor import Monitor, Verdict
 
-from blossoml_ops.agent import RULES_DFA, RULES_YAML, check_rules
+from blossoml_ops.agent import RULES_YAML, check_rules
 from blossoml_ops.labeling import OpsLabeler, full_name
 from blossoml_ops.tools import build_specs, representative_args
+
+RULESET = load_rules(RULES_YAML)
 
 
 @pytest.fixture(params=[False, True], ids=["phase1", "phase2"])
 def setup(request):
     specs = build_specs(request.param)
     labeler = OpsLabeler([s.name for s in specs], representative_args(specs))
-    return Monitor(load_compiled(RULES_DFA, RULES_YAML)), labeler
+    return Monitor(RULESET), labeler
 
 
 def call(monitor, labeler, short, args=None, result=None):
@@ -43,7 +45,7 @@ def test_r0_denies_unregistered_tools(setup, tool):
 def test_r0_denies_write_tools_in_phase1():
     specs = build_specs(False)
     labeler = OpsLabeler([s.name for s in specs])
-    monitor = Monitor(load_compiled(RULES_DFA, RULES_YAML))
+    monitor = Monitor(RULESET)
     assert call(monitor, labeler, "restart_service") == ["R0"]
 
 
@@ -82,7 +84,7 @@ def test_r9_five_alerts(setup):
 
 def phase2():
     specs = build_specs(True)
-    return Monitor(load_compiled(RULES_DFA, RULES_YAML)), OpsLabeler([s.name for s in specs], representative_args(specs))
+    return Monitor(RULESET), OpsLabeler([s.name for s in specs], representative_args(specs))
 
 
 def test_r1_checks_before_restart():

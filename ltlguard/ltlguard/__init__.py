@@ -1,22 +1,24 @@
 """ltlguard: LTLf rules over agent tool calls.
 
-The runtime (``ltlguard.core``, ``ltlguard.spec``, ``ltlguard.trace``) is pure
-Python. Spot is imported only by ``ltlguard.compile``.
+Rules are parsed and translated to automata by Spot (>= 2.14, with Python
+bindings), which is also used at runtime to step the automata.
 """
 
 __version__ = "0.1.0"
 
-from ltlguard.core.dfa import CompiledRule, RuleSet, load_compiled
+from ltlguard.core.automaton import Rule, RuleSet, RulesError, RuleState, load_rules
 from ltlguard.core.labeling import Candidate, Labeler
 from ltlguard.core.monitor import Monitor, PreviewResult, Verdict
 
 __all__ = [
     "Candidate",
-    "CompiledRule",
     "Labeler",
     "Monitor",
     "PreviewResult",
+    "Rule",
     "RuleSet",
+    "RuleState",
+    "RulesError",
     "Verdict",
-    "load_compiled",
+    "load_rules",
 ]

@@ -1,22 +1,15 @@
-"""Runtime tests. They use a precompiled fixture, so they run without Spot."""
-
-import json
-import shutil
-from pathlib import Path
+"""Monitor tests on the fixture rules."""
 
 import pytest
 
-from ltlguard.core.dfa import CompiledRulesError, load_compiled, parse_compiled
+from conftest import FIXTURE_RULES
+from ltlguard.core.automaton import RulesError, load_rules
 from ltlguard.core.monitor import Monitor, Verdict
 
-DATA = Path(__file__).parent / "data"
-YAML = DATA / "fixture_rules.yaml"
-DFA = DATA / "fixture_rules.dfa.json"
 
-
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ruleset():
-    return load_compiled(DFA, YAML)
+    return load_rules(FIXTURE_RULES)
 
 
 def run(monitor, *steps):
@@ -109,31 +102,22 @@ def test_preview_does_not_change_state(ruleset):
     assert m.states == before
 
 
-def test_hash_mismatch(tmp_path, ruleset):
-    y = tmp_path / "rules.yaml"
-    y.write_text(YAML.read_text() + "\n# edited\n")
-    with pytest.raises(CompiledRulesError, match="different"):
-        load_compiled(DFA, y)
+def test_invalid_rules_file(tmp_path):
+    p = tmp_path / "rules.yaml"
+    p.write_text("version: 1\nrules:\n  - id: R1\n    formula: 'G (a'\n")
+    with pytest.raises(RulesError):
+        load_rules(p)
+    p.write_text("not: [valid")
+    with pytest.raises(RulesError):
+        load_rules(p)
 
 
-def test_malformed_files_are_rejected(tmp_path):
-    data = json.loads(DFA.read_text())
-    # Make a transition non-deterministic.
-    data["rules"][0]["states"][0]["transitions"].append({"guard": "true", "to": 0})
-    with pytest.raises(CompiledRulesError):
-        parse_compiled(data)
-    data = json.loads(DFA.read_text())
-    data["rules"][0]["states"][0]["safe_next"] = "true"
-    with pytest.raises(CompiledRulesError):
-        parse_compiled(data)
-    data = json.loads(DFA.read_text())
-    data["format"] = "other"
-    with pytest.raises(CompiledRulesError):
-        parse_compiled(data)
-    p = tmp_path / "x.json"
-    p.write_text("{not json")
-    with pytest.raises(CompiledRulesError):
-        load_compiled(p)
+def test_describe_shows_residual_formula(ruleset):
+    m = Monitor(ruleset)
+    run(m, {"status_checked"})
+    d = m.describe()["B"]
+    assert d["verdict"] == "tentative_ok"
+    assert d["residual"] == "!restart W logs_read"  # what the rest of the run must satisfy
 
 
 def test_snapshot_restore(ruleset):
