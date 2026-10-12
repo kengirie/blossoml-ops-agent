@@ -1,0 +1,15 @@
+# Stand-in for the production unit (not in the blossoML repository).
+[Unit]
+Description=blossoML (Blossom server)
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/blossoML
+# 0.0.0.0 so that the host can reach it through the published port.
+ExecStart=/home/ubuntu/blossoML/main.exe --port 8082 --host 0.0.0.0
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

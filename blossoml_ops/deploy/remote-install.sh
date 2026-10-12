@@ -25,7 +25,8 @@ DEST="$ROOT/releases/$VERSION"
 # 2. unpack the environment into releases/<version>/env and fix its prefixes
 mkdir -p "$DEST/env"
 tar -xzf env.tar.gz -C "$DEST/env"
-"$DEST/env/bin/python" -I "$DEST/env/bin/conda-unpack"
+# (not -I: conda-unpack imports a helper module that sits next to it)
+"$DEST/env/bin/python" "$DEST/env/bin/conda-unpack"
 cp VERSION SHA256SUMS "$DEST/"
 
 # The agent user can read but not modify its own code and rules.
@@ -46,5 +47,5 @@ echo "current -> $VERSION"
 # 5. keep the newest $KEEP releases (never the current one)
 cd "$ROOT/releases"
 CUR=$(basename "$(readlink -f "$ROOT/current")")
-ls -1t | grep -vx "$CUR" | tail -n +"$KEEP" | while read -r old; do rm -rf -- "$old"; done
+ls -1t | { grep -vx "$CUR" || true; } | tail -n +"$KEEP" | while read -r old; do rm -rf -- "$old"; done
 rm -f "$PACKAGE"

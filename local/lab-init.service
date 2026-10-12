@@ -1,0 +1,13 @@
+[Unit]
+Description=Lab setup at boot (secrets, firewall, seed data)
+After=blossoml.service tinyproxy.service
+Wants=blossoml.service tinyproxy.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/lab/lab-init.sh
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

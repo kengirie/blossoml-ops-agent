@@ -1,0 +1,19 @@
+# Local lab: blossoML + blossoml-ops on one systemd host. See README.md.
+name: blossoml-lab
+services:
+  lab:
+    build:
+      context: ..
+      dockerfile: local/Dockerfile
+    image: blossoml-lab
+    hostname: blossoml-lab
+    privileged: true          # systemd as PID 1, nftables
+    cgroup: private
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    volumes:
+      - ./secrets:/run/host-secrets
+    ports:
+      - "127.0.0.1:8082:8082"   # blossoML, for poking at it from the host
