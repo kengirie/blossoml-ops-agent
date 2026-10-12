@@ -29,16 +29,31 @@ docker compose exec lab journalctl -u lab-init -o cat --no-pager | grep '\[lab-i
 
 ## エージェントを動かす
 
-```sh
-docker compose exec lab systemctl start blossoml-ops@daily       # 定期点検（終わるまで戻らない）
-docker compose exec lab systemctl start blossoml-ops@postdeploy  # デプロイ後の確認（テスト用 blob を使う）
-docker compose exec lab /opt/blossoml-ops/bin/run-manual "直近 1 時間のアップロードの状況を調べて"
+`lab.sh` に操作をまとめてあります（どのディレクトリからでも `local/lab.sh <コマンド>` で使えます）。
 
-docker compose exec lab journalctl -u blossoml-ops@daily -o cat --no-pager   # 実行結果（終了コードと費用）
-docker compose exec lab bash -c 'cat /var/lib/blossoml-ops/traces/*.jsonl' | less   # トレース
+```sh
+./lab.sh run                 # 定期点検（daily）。終わるまで待ち、最後に終了コードと費用を表示
+./lab.sh run postdeploy      # デプロイ後の確認（テスト用 blob を使う）
+./lab.sh manual "直近 1 時間のアップロードの状況を調べて"
 ```
 
-**DM は本物が送られます。** 宛先は設計書の運営者の npub（固定）、送信元はこの環境の bot の鍵です。
+**DM は本物が送られます。** 宛先は設計書の運営者の npub（固定）、送信元はこの環境の bot の鍵です（`./lab.sh init` で npub を表示）。
+1 回の実行で 0.1〜0.2 ドル程度かかります（上限は設定の `max_budget_usd`）。
+
+## ログを見る
+
+| コマンド | 見られるもの |
+|---|---|
+| `./lab.sh trace` | 直前の実行を 1 手ずつ（どのツールを何の引数で呼び、何が返ったか、拒否、終了時のルールの状態）と、送った通知の本文。`./lab.sh trace <run id>` で過去の実行も見られる |
+| `./lab.sh result` | 直前の実行の終了コード・ターン数・費用（`./lab.sh result postdeploy` なども可） |
+| `./lab.sh follow` | 実行中のエージェント・blossoML・プロキシのログをリアルタイムで（別のターミナルで開いてから `run` すると見やすい。Ctrl-C で終了） |
+| `./lab.sh blossoml` | blossoML 自身のログ（`read_logs` が集計している元データ） |
+| `./lab.sh raw` | トレースの JSONL そのもの |
+| `./lab.sh undelivered` | どのリレーにも届かなかった通知 |
+| `./lab.sh init` | 実験環境の準備ログ（テストデータ、bot の npub） |
+| `./lab.sh shell` | コンテナの中の root シェル |
+
+終了コード: 0 正常 / 1 内部エラー / 2 ルール未達 / 3 報告が 1 通も届かなかった / 4 ハーネスが異常を検知（critical DM 済み）/ 5 設定・ルールの不整合。
 
 ## 確かめられること
 
