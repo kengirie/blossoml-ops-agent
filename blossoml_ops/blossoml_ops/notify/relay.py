@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from blossoml_ops.notify.keys import finalize_event
+from blossoml_ops.tls import client_context
 
 
 @dataclass
@@ -37,7 +38,8 @@ async def publish_once(
             raise asyncio.TimeoutError
         return json.loads(await asyncio.wait_for(ws.recv(), remaining))
 
-    async with connect(relay, proxy=proxy, open_timeout=timeout, close_timeout=2, max_size=1 << 20) as ws:
+    tls = client_context() if relay.startswith("wss://") else None
+    async with connect(relay, proxy=proxy, ssl=tls, open_timeout=timeout, close_timeout=2, max_size=1 << 20) as ws:
         await ws.send(json.dumps(["EVENT", event]))
         while True:
             msg = await recv(ws)

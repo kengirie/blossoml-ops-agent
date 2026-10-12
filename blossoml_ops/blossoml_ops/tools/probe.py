@@ -14,6 +14,7 @@ import ssl
 import time
 import urllib.parse
 
+from blossoml_ops.tls import client_context
 from blossoml_ops.tools.base import ToolError
 
 TARGETS = ("root_get", "upload_head", "test_blob_head", "test_blob_get")
@@ -39,7 +40,7 @@ def _connection(ctx, timeout: float):
     u = urllib.parse.urlsplit(ctx.config.blossoml_url)
     host, port = u.hostname, u.port or (443 if u.scheme == "https" else 80)
     if u.scheme == "https":
-        context = ssl.create_default_context()
+        context = client_context()
         if not ctx.config.tls_verify:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE

@@ -210,3 +210,19 @@ async def test_publish_unreachable_relay_gives_up():
     ev = wrap_dm(bot, xonly_pubkey(generate_secret()), "hello")
     results = await publish(["ws://127.0.0.1:9"], ev, auth_secret=bot, proxy=None, attempt_timeout=1, total_timeout=3)
     assert not results[0].accepted
+
+
+def test_tls_context_uses_the_environments_ca_bundle(monkeypatch, tmp_path):
+    import ssl
+
+    from blossoml_ops import tls
+
+    calls = []
+    real = ssl.create_default_context
+    monkeypatch.setattr(ssl, "create_default_context", lambda cafile=None: calls.append(cafile) or real())
+    bundle = tmp_path / "cacert.pem"
+    monkeypatch.setattr(tls, "ENV_CA_BUNDLE", bundle)
+    tls.client_context()
+    bundle.write_text("x")
+    tls.client_context()
+    assert calls == [None, str(bundle)]

@@ -17,13 +17,14 @@ chmod 600 secrets/anthropic_api_key
 ```
 
 bot の Nostr 鍵は、`secrets/nostr_bot_nsec` がなければ初回起動時に自動で作られ、以後も同じものが使われます。
+API キーを後から置いた場合は `docker compose exec lab systemctl restart lab-init` で反映されます。
 `secrets/` の中身は git に入りません。
 
 ## 起動
 
 ```sh
 docker compose up -d --build            # 初回のビルドは blossoML の依存のコンパイルで 10〜20 分ほど
-docker compose logs -f lab | grep lab-init   # 「ready」と bot の npub が出たら準備完了
+docker compose exec lab journalctl -u lab-init -o cat --no-pager | grep '\[lab-init\]'   # 「ready」と bot の npub が出たら準備完了
 ```
 
 ## エージェントを動かす

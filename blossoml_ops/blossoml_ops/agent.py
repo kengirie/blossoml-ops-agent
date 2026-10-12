@@ -263,7 +263,7 @@ async def _drive(client, prompt: str, session: GuardSession, trace: TraceWriter,
             alerts("critical", "エージェントの実行エラー", f"subtype={result.subtype}")
             return
         # Fallback in case the Stop hook did not send the agent back.
-        if not session.monitor.pending_obligations():
+        if not session.monitor.pending_obligations() or session.unmet_at_stop:
             return
         message = session.at_stop()
         if message is None:
