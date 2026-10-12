@@ -1,0 +1,79 @@
+# LTL rules for blossoml-ops (design 6.8).
+# After editing, run:  ltlguard compile blossoml_ops/rules.yaml
+# The runtime refuses to start if rules.dfa.json was compiled from another version of this file.
+#
+# Propositions are defined in blossoml_ops/labeling.py.
+# Out of scope for now: R3 (rollback only after human approval) and the approval flow;
+# there is no rollback tool, so R4 covers restart only.
+version: 1
+rules:
+  - id: R0
+    name: 許可リストのツールしか呼ばない
+    description: このエージェントに登録されたツール以外は使えません。
+    template: always
+    prop: allowed_tool
+    on_violation: deny
+    alert: critical
+
+  - id: R6
+    name: probe は許可リストの対象のみ
+    description: http_probe の target は root_get / upload_head / test_blob_head / test_blob_get のいずれかに限られます。
+    template: never
+    prop: probe_non_allowlisted
+    on_violation: deny
+    alert: critical
+
+  - id: R5'
+    name: 終了前に必ず報告する
+    description: 終了する前に notify で運営者に報告を送り、1 つ以上のリレーに受理されている必要があります。
+    template: eventually
+    prop: notified
+    on_violation: deny
+
+  - id: R8
+    name: info 通知は 1 回まで
+    description: info の通知はセッションあたり 1 通までです。内容をまとめて 1 通で送ってください。
+    template: at_most_once
+    prop: notify_info
+    on_violation: deny
+
+  - id: R9
+    name: warning / critical 通知は合計 5 回まで
+    description: warning と critical の通知は合わせて 5 通までです。
+    template: at_most
+    prop: notify_alert
+    count: 5
+    on_violation: deny
+
+  # ---- phase 2 (write tools; the propositions never occur while phase2.enabled is false) ----
+
+  - id: R1
+    name: 再起動の前に状態とログを確認する
+    description: restart_service を呼ぶ前に、service_status と read_logs を実行してください。
+    # Each step is one tool call, so the two checks happen at different steps:
+    # each must precede the restart on its own.
+    formula: "(!restart W status_checked) & (!restart W logs_read)"
+    on_violation: deny
+
+  - id: R2
+    name: 再起動は 1 セッション 1 回まで
+    description: restart_service は 1 セッションに 1 回までです。2 回目が必要な状況なら critical で運営者に報告してください。
+    template: at_most_once
+    prop: restart
+    on_violation: deny
+
+  - id: R4
+    name: 再起動後は稼働確認する
+    description: restart_service の後に http_probe（target=root_get）で HTTP 200 を確認してください。
+    template: response
+    trigger: restart
+    response: probe_ok
+    on_violation: deny
+
+  - id: R5
+    name: tmp 掃除の前に DB をバックアップする
+    description: cleanup_tmp を呼ぶ前に、backup_db を実行して成功させてください。
+    template: not_until
+    prop: cleanup
+    until: backup_ok
+    on_violation: deny

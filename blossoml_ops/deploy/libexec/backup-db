@@ -1,0 +1,36 @@
+#!/usr/bin/python3 -I
+"""Root-owned (phase 2). Online backup of blossom.db with SQLite's backup API.
+
+Installed at /usr/local/libexec/blossoml-ops/backup-db, owner root, mode 0755.
+Takes no arguments. Keeps the newest KEEP backups.
+"""
+import datetime
+import os
+import sqlite3
+import sys
+
+DB = "/home/ubuntu/blossoML/db/blossom.db"
+DEST_DIR = "/home/ubuntu/blossoML/backups"
+KEEP = 7
+
+if len(sys.argv) != 1:
+    print("usage: backup-db", file=sys.stderr)
+    sys.exit(2)
+os.makedirs(DEST_DIR, mode=0o750, exist_ok=True)
+stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+dest = os.path.join(DEST_DIR, f"blossom-{stamp}.db")
+src = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30)
+fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640)
+os.close(fd)
+dst = sqlite3.connect(dest)
+with dst:
+    src.backup(dst)
+ok = dst.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+dst.close()
+src.close()
+os.chown(dest, os.stat(DB).st_uid, os.stat(DB).st_gid)
+backups = sorted(f for f in os.listdir(DEST_DIR) if f.startswith("blossom-") and f.endswith(".db"))
+for old in backups[:-KEEP]:
+    os.unlink(os.path.join(DEST_DIR, old))
+print(f"backup {os.path.basename(dest)} size={os.path.getsize(dest)} integrity={'ok' if ok else 'FAILED'}")
+sys.exit(0 if ok else 1)

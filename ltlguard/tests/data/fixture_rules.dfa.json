@@ -1,0 +1,425 @@
+{
+ "format": "ltlguard-dfa/1",
+ "source_sha256": "4df4b477b428309fcebdf78236b3bbfe3bae8687f585055493ed76a436803540",
+ "compiler": "ltlguard 0.1.0",
+ "spot_version": "2.16",
+ "rules": [
+  {
+   "id": "A",
+   "name": "allowlisted tools only",
+   "description": "only call allowed tools",
+   "formula": "G(allowed)",
+   "on_violation": "deny",
+   "alert": "critical",
+   "aps": [
+    "allowed"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "allowed",
+     "transitions": [
+      {
+       "guard": "allowed",
+       "to": 0
+      },
+      {
+       "guard": "!allowed",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": false,
+     "dead": true,
+     "permanent": false,
+     "safe_next": "false",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "B",
+   "name": "check before restart",
+   "description": "call status and logs before restart",
+   "formula": "(!restart W status_checked) & (!restart W logs_read)",
+   "on_violation": "deny",
+   "alert": null,
+   "aps": [
+    "logs_read",
+    "restart",
+    "status_checked"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "!restart | (logs_read & status_checked)",
+     "transitions": [
+      {
+       "guard": "!logs_read & !restart & !status_checked",
+       "to": 0
+      },
+      {
+       "guard": "logs_read & !restart & !status_checked",
+       "to": 1
+      },
+      {
+       "guard": "!logs_read & !restart & status_checked",
+       "to": 2
+      },
+      {
+       "guard": "logs_read & status_checked",
+       "to": 3
+      },
+      {
+       "guard": "(restart & !status_checked) | (!logs_read & restart)",
+       "to": 4
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "!restart | status_checked",
+     "transitions": [
+      {
+       "guard": "!restart & !status_checked",
+       "to": 1
+      },
+      {
+       "guard": "status_checked",
+       "to": 3
+      },
+      {
+       "guard": "restart & !status_checked",
+       "to": 4
+      }
+     ]
+    },
+    {
+     "id": 2,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "logs_read | !restart",
+     "transitions": [
+      {
+       "guard": "!logs_read & !restart",
+       "to": 2
+      },
+      {
+       "guard": "logs_read",
+       "to": 3
+      },
+      {
+       "guard": "!logs_read & restart",
+       "to": 4
+      }
+     ]
+    },
+    {
+     "id": 3,
+     "accepting": true,
+     "dead": false,
+     "permanent": true,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 3
+      }
+     ]
+    },
+    {
+     "id": 4,
+     "accepting": false,
+     "dead": true,
+     "permanent": false,
+     "safe_next": "false",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 4
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "C",
+   "name": "report before exit",
+   "description": "send a report",
+   "formula": "F(notified)",
+   "on_violation": "deny",
+   "alert": null,
+   "aps": [
+    "notified"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": false,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "!notified",
+       "to": 0
+      },
+      {
+       "guard": "notified",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": true,
+     "dead": false,
+     "permanent": true,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "D",
+   "name": "one info message",
+   "description": "at most one info message",
+   "formula": "G((notify_info) -> X(G!(notify_info)))",
+   "on_violation": "deny",
+   "alert": null,
+   "aps": [
+    "notify_info"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "!notify_info",
+       "to": 0
+      },
+      {
+       "guard": "notify_info",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "!notify_info",
+     "transitions": [
+      {
+       "guard": "!notify_info",
+       "to": 1
+      },
+      {
+       "guard": "notify_info",
+       "to": 2
+      }
+     ]
+    },
+    {
+     "id": 2,
+     "accepting": false,
+     "dead": true,
+     "permanent": false,
+     "safe_next": "false",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E",
+   "name": "probe after restart",
+   "description": "probe after restart",
+   "formula": "G((restart) -> F(probe_ok))",
+   "on_violation": "deny",
+   "alert": null,
+   "aps": [
+    "probe_ok",
+    "restart"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "probe_ok | !restart",
+       "to": 0
+      },
+      {
+       "guard": "!probe_ok & restart",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": false,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "probe_ok",
+       "to": 0
+      },
+      {
+       "guard": "!probe_ok",
+       "to": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "F",
+   "name": "shadow rule",
+   "description": "never do bad things",
+   "formula": "G!(bad)",
+   "on_violation": "log_only",
+   "alert": null,
+   "aps": [
+    "bad"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "!bad",
+     "transitions": [
+      {
+       "guard": "!bad",
+       "to": 0
+      },
+      {
+       "guard": "bad",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": false,
+     "dead": true,
+     "permanent": false,
+     "safe_next": "false",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "G",
+   "name": "backup before cleanup",
+   "description": "back up before cleanup",
+   "formula": "!(cleanup) W (backup_ok)",
+   "on_violation": "deny",
+   "alert": null,
+   "aps": [
+    "backup_ok",
+    "cleanup"
+   ],
+   "initial": 0,
+   "states": [
+    {
+     "id": 0,
+     "accepting": true,
+     "dead": false,
+     "permanent": false,
+     "safe_next": "backup_ok | !cleanup",
+     "transitions": [
+      {
+       "guard": "!backup_ok & !cleanup",
+       "to": 0
+      },
+      {
+       "guard": "backup_ok",
+       "to": 1
+      },
+      {
+       "guard": "!backup_ok & cleanup",
+       "to": 2
+      }
+     ]
+    },
+    {
+     "id": 1,
+     "accepting": true,
+     "dead": false,
+     "permanent": true,
+     "safe_next": "true",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 1
+      }
+     ]
+    },
+    {
+     "id": 2,
+     "accepting": false,
+     "dead": true,
+     "permanent": false,
+     "safe_next": "false",
+     "transitions": [
+      {
+       "guard": "true",
+       "to": 2
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

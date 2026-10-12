@@ -1,0 +1,42 @@
+# blossoml-ops, one run per start. Instance = mode: daily | postdeploy
+#   sudo systemctl start blossoml-ops@postdeploy
+# (manual mode takes an instruction; see bin/run-manual)
+[Unit]
+Description=blossoML ops agent (%i)
+After=network-online.target blossoml.service tinyproxy.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=blossoml-ops
+Group=blossoml-ops
+SupplementaryGroups=systemd-journal
+Environment=BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml
+Environment=HOME=/var/lib/blossoml-ops
+ExecStart=/opt/blossoml-ops/current/venv/bin/python -I -m blossoml_ops.main %i
+WorkingDirectory=/var/lib/blossoml-ops/work
+TimeoutStartSec=20min
+
+# I5: when memory runs out, the agent must die first, never blossoML.
+MemoryMax=350M
+MemorySwapMax=200M
+CPUQuota=50%
+Nice=10
+OOMScoreAdjust=800
+IOSchedulingClass=idle
+
+# Hardening. NoNewPrivileges=yes would break sudo; enable it only while phase 2 is off.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/blossoml-ops
+UMask=0027

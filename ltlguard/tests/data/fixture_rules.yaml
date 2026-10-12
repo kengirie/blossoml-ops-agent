@@ -1,0 +1,42 @@
+# Fixture for runtime tests that run without Spot.
+# Regenerate: ltlguard compile tests/data/fixture_rules.yaml
+version: 1
+rules:
+  - id: A
+    name: allowlisted tools only
+    description: only call allowed tools
+    template: always
+    prop: allowed
+    alert: critical
+  - id: B
+    name: check before restart
+    description: call status and logs before restart
+    formula: "(!restart W status_checked) & (!restart W logs_read)"
+  - id: C
+    name: report before exit
+    description: send a report
+    template: eventually
+    prop: notified
+  - id: D
+    name: one info message
+    description: at most one info message
+    template: at_most_once
+    prop: notify_info
+  - id: E
+    name: probe after restart
+    description: probe after restart
+    template: response
+    trigger: restart
+    response: probe_ok
+  - id: F
+    name: shadow rule
+    description: never do bad things
+    template: never
+    prop: bad
+    on_violation: log_only
+  - id: G
+    name: backup before cleanup
+    description: back up before cleanup
+    template: not_until
+    prop: cleanup
+    until: backup_ok

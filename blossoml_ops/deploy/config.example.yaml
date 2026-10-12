@@ -1,0 +1,37 @@
+# /etc/blossoml-ops/config.yaml  (owner root, mode 0644; contains no secrets)
+blossoml:
+  dir: /home/ubuntu/blossoML
+  unit: blossoml.service
+  # Must be localhost. If blossoML serves TLS with a certificate for its public
+  # name, use https://localhost:<port> with tls_verify: false.
+  url: http://localhost:8082
+  tls_verify: true
+
+# The harmless test blob the operator uploaded (short text). Used by postdeploy.
+test_blob_sha256: null
+
+paths:
+  state_dir: /var/lib/blossoml-ops        # traces/, work/ (empty cwd), metrics.json, undelivered.jsonl
+  # trace_dir: /var/lib/blossoml-ops/traces
+  # work_dir: /var/lib/blossoml-ops/work
+
+secrets:
+  anthropic_api_key_file: /etc/blossoml-ops/anthropic_api_key   # owner blossoml-ops, 0400
+  nostr_bot_nsec_file: /etc/blossoml-ops/nostr_bot_nsec         # owner blossoml-ops, 0400
+
+proxy: http://127.0.0.1:8888   # tinyproxy (I4)
+
+model: null            # null = the CLI default; or e.g. claude-sonnet-5-5
+max_turns: 30
+max_budget_usd: 1.0
+run_timeout_s: 900
+
+# Mask public keys in log samples and DB reports before they reach the API (to be decided).
+mask_pubkeys: false
+
+phase2:
+  enabled: false       # write tools (restart, backup, tmp cleanup). Needs sudoers and NoNewPrivileges=no.
+
+trace:
+  retention_days: 30
+  max_total_mb: 50

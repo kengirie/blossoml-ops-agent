@@ -1,0 +1,12 @@
+#!/bin/sh
+# Manual investigation with the same resource limits and hardening as the timer runs.
+#   sudo /opt/blossoml-ops/bin/run-manual "直近 6 時間の 5xx の内訳を調べて"
+set -eu
+[ "$#" -eq 1 ] || { echo "usage: run-manual <instruction>" >&2; exit 2; }
+exec systemd-run --wait --pipe --collect --quiet \
+  --uid=blossoml-ops --gid=blossoml-ops -p SupplementaryGroups=systemd-journal \
+  -p MemoryMax=350M -p MemorySwapMax=200M -p CPUQuota=50% -p Nice=10 -p OOMScoreAdjust=800 \
+  -p ProtectSystem=strict -p ProtectHome=read-only -p PrivateTmp=yes -p ReadWritePaths=/var/lib/blossoml-ops \
+  -p UMask=0027 -p WorkingDirectory=/var/lib/blossoml-ops/work \
+  -E BLOSSOML_OPS_CONFIG=/etc/blossoml-ops/config.yaml -E HOME=/var/lib/blossoml-ops \
+  /opt/blossoml-ops/current/venv/bin/python -I -m blossoml_ops.main manual --instruction "$1"

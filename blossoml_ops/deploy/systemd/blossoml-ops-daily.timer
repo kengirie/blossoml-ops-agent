@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily blossoML inspection
+
+[Timer]
+# The time is to be decided by the operator (design 10). UTC.
+OnCalendar=*-*-* 00:30:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+Unit=blossoml-ops@daily.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+# /etc/sudoers.d/blossoml-ops   (phase 2 only; install with: visudo -cf <file> && install -m 0440)
+# argv is fixed. cleanup-tmp takes one number, validated again by the script.
+# There is no rollback entry: rollback needs a human approval flow, which is out of scope.
+Defaults:blossoml-ops !requiretty, env_reset, secure_path="/usr/sbin:/usr/bin:/sbin:/bin"
+blossoml-ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart blossoml
+blossoml-ops ALL=(root) NOPASSWD: /usr/local/libexec/blossoml-ops/backup-db
+blossoml-ops ALL=(root) NOPASSWD: /usr/local/libexec/blossoml-ops/cleanup-tmp *

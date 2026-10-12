@@ -1,0 +1,34 @@
+From 0d2d4d4a066d7672a97c3b52c410d80dca2b0271 Mon Sep 17 00:00:00 2001
+From: blossoml-ops <konnichiha7898@gmail.com>
+Date: Sun, 11 Oct 2026 22:37:25 -0700
+Subject: [PATCH] fix: create blob and temp files with mode 0640
+
+---
+ lib/shell/storage_eio.ml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/shell/storage_eio.ml b/lib/shell/storage_eio.ml
+index 9fe49ed..c723397 100644
+--- a/lib/shell/storage_eio.ml
++++ b/lib/shell/storage_eio.ml
+@@ -58,7 +58,7 @@ module Impl : Storage_intf.S with type t = Eio.Fs.dir_ty Eio.Path.t = struct
+         }
+     | Ok false ->
+         try
+-          Eio.Path.with_open_out ~create:(`Or_truncate 0o644) final_path ignore;
++          Eio.Path.with_open_out ~create:(`Or_truncate 0o640) final_path ignore;
+           Ok {
+             Storage_intf.sha256 = empty_sha256;
+             size = 0;
+@@ -79,7 +79,7 @@ module Impl : Storage_intf.S with type t = Eio.Fs.dir_ty Eio.Path.t = struct
+         (* 一時ファイルに書き込みながらハッシュ計算（ストリーミング） *)
+         let write_result =
+           try
+-            Ok (Eio.Path.with_open_out ~create:(`Or_truncate 0o644) temp_path (fun file ->
++            Ok (Eio.Path.with_open_out ~create:(`Or_truncate 0o640) temp_path (fun file ->
+               let init = { ctx = Digestif.SHA256.init (); size = 0; first_chunk = None } in
+               Piaf.Body.fold_string body ~init ~f:(fun state chunk ->
+                 let new_size = state.size + String.length chunk in
+-- 
+2.39.5 (Apple Git-154)
+

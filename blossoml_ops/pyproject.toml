@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blossoml-ops"
+version = "0.1.0"
+description = "Operations agent for the blossoML Blossom server"
+requires-python = ">=3.10"
+dependencies = [
+    "ltlguard[sdk]",
+    "claude-agent-sdk>=0.2",
+    "pyyaml>=6",
+    "websockets>=15",
+    "cryptography>=42",
+    "coincurve>=20",
+]
+
+[project.optional-dependencies]
+# python-systemd is optional; without it, read_logs calls journalctl with a fixed argv.
+journal = ["systemd-python>=235"]
+test = ["pytest>=7", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+include = ["blossoml_ops*"]
+
+[tool.setuptools.package-data]
+blossoml_ops = ["prompt.md", "rules.yaml", "rules.dfa.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

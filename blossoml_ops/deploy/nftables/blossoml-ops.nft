@@ -1,0 +1,11 @@
+#!/usr/sbin/nft -f
+# I4: the blossoml-ops user may only talk to the local proxy and the local blossoML.
+# Include from /etc/nftables.conf and `systemctl enable --now nftables`.
+# Adjust 8082 if blossoML listens on another port.
+table inet blossoml_ops {
+  chain output {
+    type filter hook output priority 0; policy accept;
+    meta skuid "blossoml-ops" oif "lo" tcp dport { 8888, 8082 } accept
+    meta skuid "blossoml-ops" counter reject
+  }
+}
