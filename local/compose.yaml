@@ -15,5 +15,6 @@ services:
       - /tmp
     volumes:
       - ./secrets:/run/host-secrets
+      - ./experiment:/opt/lab/experiment:ro
     ports:
       - "127.0.0.1:8082:8082"   # blossoML, for poking at it from the host

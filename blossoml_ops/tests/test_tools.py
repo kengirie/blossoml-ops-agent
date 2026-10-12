@@ -136,11 +136,23 @@ def test_write_ops_use_fixed_sudo_argv(ctx):
     write_ops.restart_service(c)
     write_ops.backup_db(c)
     write_ops.cleanup_tmp(c, 24)
-    assert ex.calls == [
+    sudo = [c for c in ex.calls if c[0] == "/usr/bin/sudo"]
+    assert sudo == [
         ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "restart", "blossoml"],
-        ["/usr/bin/sudo", "-n", "/usr/local/libexec/blossoml-ops/backup-db"],
-        ["/usr/bin/sudo", "-n", "/usr/local/libexec/blossoml-ops/cleanup-tmp", "24"],
+        ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "start", "--wait", "blossoml-ops-backup-db.service"],
+        ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "start", "--wait", "blossoml-ops-cleanup-tmp@24.service"],
     ]
+    with pytest.raises(ValueError):
+        write_ops.cleanup_tmp(c, 25)
+
+
+def test_sudoers_matches_cleanup_ages():
+    from pathlib import Path
+
+    sudoers = (Path(__file__).parents[1] / "deploy" / "sudoers" / "blossoml-ops").read_text()
+    allowed = sorted(int(x) for x in __import__("re").findall(r"cleanup-tmp@(\d+)\.service", sudoers))
+    assert allowed == sorted(write_ops.CLEANUP_AGES)
+    assert "*" not in sudoers.split("Defaults")[1]
 
 
 # ---- http_probe against a local server ------------------------------------------

@@ -112,10 +112,11 @@ def test_r2_and_r4_restart():
     assert "R4" in [r.id for r in monitor.pending_obligations()]
     assert call(monitor, labeler, "restart_service") == ["R2"]
     call(monitor, labeler, "http_probe", {"target": "upload_head"}, {"status": 401})
-    assert monitor.verdicts()["R4"] is Verdict.TENTATIVE_VIOLATION
-    call(monitor, labeler, "http_probe", {"target": "root_get"}, {"status": 503})
-    assert monitor.verdicts()["R4"] is Verdict.TENTATIVE_VIOLATION
-    call(monitor, labeler, "http_probe", {"target": "root_get"}, {"status": 200})
+    assert monitor.verdicts()["R4"] is Verdict.TENTATIVE_VIOLATION  # not the root check
+    call(monitor, labeler, "http_probe", {"target": "root_get"}, {"error": "timeout"})
+    assert monitor.verdicts()["R4"] is Verdict.TENTATIVE_VIOLATION  # the probe itself failed
+    # A persisting outage still fulfils the obligation: the agent checked.
+    call(monitor, labeler, "http_probe", {"target": "root_get"}, {"reachable": False, "error_type": "ConnectionRefusedError"})
     assert monitor.verdicts()["R4"] is Verdict.TENTATIVE_OK
 
 

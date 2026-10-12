@@ -174,10 +174,15 @@ oneshot なので再起動は不要です。次の起動から前の版が使わ
 ## 10. フェーズ 2（書き込み系ツール）を有効にする場合
 
 ```sh
+sudo install -d /usr/local/libexec/blossoml-ops
 sudo install -o root -g root -m 0755 libexec/backup-db libexec/cleanup-tmp /usr/local/libexec/blossoml-ops/
+sudo install -m 0644 systemd/blossoml-ops-backup-db.service 'systemd/blossoml-ops-cleanup-tmp@.service' /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo visudo -cf sudoers/blossoml-ops && sudo install -o root -g root -m 0440 sudoers/blossoml-ops /etc/sudoers.d/blossoml-ops
 ```
 
+バックアップと tmp 掃除は、エージェントが sudo で「root の systemd ユニットを起動する」形で行います。処理はエージェントのサンドボックス（`ProtectHome=read-only` など）の外で動きます。sudo で直接スクリプトを動かすと、エージェントの制限がスクリプトにも引き継がれて書き込めません（実験環境で確認）。
+
 - `/etc/blossoml-ops/config.yaml` で `phase2.enabled: true`
 - `blossoml-ops@.service` の `NoNewPrivileges=yes` を外す（sudo と両立しないため）。`ReadWritePaths` はそのままで構いません（書き込みは root のスクリプトが行う）。
-- 有効化すると R1（再起動前の確認）、R2（再起動は 1 回）、R4（再起動後の稼働確認）、R5（掃除の前のバックアップ）が意味を持ちます。
+- 有効化すると R1（再起動前の確認）、R2（再起動は 1 回）、R4（再起動後に稼働を確認する。結果が 200 でなくてもよい）、R5（掃除の前のバックアップ）が意味を持ちます。

@@ -11,6 +11,7 @@ Call-time propositions (known at PreToolUse):
 Result propositions (known at PostToolUse):
   status_checked          service_status returned a result
   logs_read               read_logs returned a result
+  probe_done              http_probe root_get returned a result (any status, or unreachable)
   probe_ok                http_probe root_get returned HTTP 200
   notified                notify was accepted by at least one relay
   backup_ok               backup_db finished successfully      (phase 2)
@@ -29,7 +30,7 @@ PROBE_TARGETS = ("root_get", "upload_head", "test_blob_head", "test_blob_get")
 ALL_PROPS = frozenset(
     {
         "allowed_tool", "probe_non_allowlisted", "notify_info", "notify_alert", "restart", "cleanup",
-        "status_checked", "logs_read", "probe_ok", "notified", "backup_ok",
+        "status_checked", "logs_read", "probe_done", "probe_ok", "notified", "backup_ok",
     }
 )
 
@@ -78,7 +79,7 @@ class OpsLabeler:
                 "read_logs": {"logs_read"},
                 "notify": {"notified"},
                 "backup_db": {"backup_ok"},
-                "http_probe": {"probe_ok"} if args.get("target") == "root_get" else set(),
+                "http_probe": {"probe_done", "probe_ok"} if args.get("target") == "root_get" else set(),
             }.get(short or "", set())
         )
 
@@ -92,8 +93,10 @@ class OpsLabeler:
         elif short == "read_logs":
             out.add("logs_read")
         elif short == "http_probe":
-            if args.get("target") == "root_get" and result.get("status") == 200:
-                out.add("probe_ok")
+            if args.get("target") == "root_get":
+                out.add("probe_done")
+                if result.get("status") == 200:
+                    out.add("probe_ok")
         elif short == "notify":
             accepted = result.get("accepted_relays")
             if isinstance(accepted, int) and accepted >= 1:

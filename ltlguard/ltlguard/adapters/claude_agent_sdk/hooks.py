@@ -5,6 +5,11 @@ The only module in ltlguard that depends on ``claude_agent_sdk``.
 Every hook body runs under an internal timeout shorter than the SDK hook
 timeout, and any exception or timeout in PreToolUse becomes a denial: the SDK
 treats a failing hook as non-blocking, which would otherwise fail open.
+
+Parallel tool calls: a PreToolUse that arrives while another monitored call is
+in flight waits (in arrival order) for that call to finish, up to
+``serialize_wait`` seconds. Only if it is still in flight then is the call
+denied with "call tools one at a time".
 """
 
 from __future__ import annotations
@@ -26,14 +31,25 @@ def _deny(reason: str) -> dict[str, Any]:
 
 
 class ClaudeAgentSdkAdapter:
-    def __init__(self, session: GuardSession, *, hook_timeout: float = 20.0, internal_timeout: float = 10.0):
-        if internal_timeout >= hook_timeout:
-            raise ValueError("internal_timeout must be shorter than hook_timeout")
+    def __init__(
+        self,
+        session: GuardSession,
+        *,
+        hook_timeout: float = 200.0,
+        internal_timeout: float = 10.0,
+        serialize_wait: float = 170.0,
+    ):
+        if internal_timeout + serialize_wait >= hook_timeout:
+            raise ValueError("internal_timeout + serialize_wait must be shorter than hook_timeout")
         self.session = session
         self.hook_timeout = hook_timeout
         self.internal_timeout = internal_timeout
+        self.serialize_wait = serialize_wait
         # Serializes hook bodies (they touch shared monitor state).
         self._lock = asyncio.Lock()
+        # Queues PreToolUse calls in arrival order while a call is in flight.
+        self._queue = asyncio.Lock()
+        self.waited = 0
 
     async def _run(self, fn, *args):
         async def locked():
@@ -48,7 +64,9 @@ class ClaudeAgentSdkAdapter:
             args = input_data.get("tool_input") or {}
             if not isinstance(args, dict):
                 return _deny("引数の形式が不正です。")
-            decision = await self._run(self.session.before_call, tool, args, tool_use_id or input_data.get("tool_use_id"))
+            async with self._queue:
+                await self._wait_until_idle()
+                decision = await self._run(self.session.before_call, tool, args, tool_use_id or input_data.get("tool_use_id"))
         except Exception as e:
             try:
                 self.session.trace.write("deny", tool=tool, reason="hook_error", error=type(e).__name__)
@@ -58,6 +76,20 @@ class ClaudeAgentSdkAdapter:
         if decision.allow:
             return {}
         return _deny(decision.message)
+
+    async def _wait_until_idle(self) -> None:
+        if not self.session.in_flight:
+            return
+        self.waited += 1
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        deadline = start + self.serialize_wait
+        while self.session.in_flight and loop.time() < deadline:
+            await asyncio.sleep(0.05)
+        try:
+            self.session.trace.write("serialize_wait", seconds=round(loop.time() - start, 2), cleared=not self.session.in_flight)
+        except Exception:
+            pass
 
     async def post_tool_use(self, input_data: dict, tool_use_id: str | None, context: Any) -> dict:
         await self._post(input_data, tool_use_id, failed=False)

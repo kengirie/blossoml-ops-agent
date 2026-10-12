@@ -1,7 +1,13 @@
 # /etc/sudoers.d/blossoml-ops   (phase 2 only; install with: visudo -cf <file> && install -m 0440)
-# argv is fixed. cleanup-tmp takes one number, validated again by the script.
+# Only these exact commands. The privileged work runs in root-owned systemd
+# units, outside the agent's sandbox. No wildcards: the cleanup ages are listed.
 # There is no rollback entry: rollback needs a human approval flow, which is out of scope.
 Defaults:blossoml-ops !requiretty, env_reset, secure_path="/usr/sbin:/usr/bin:/sbin:/bin"
 blossoml-ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart blossoml
-blossoml-ops ALL=(root) NOPASSWD: /usr/local/libexec/blossoml-ops/backup-db
-blossoml-ops ALL=(root) NOPASSWD: /usr/local/libexec/blossoml-ops/cleanup-tmp *
+blossoml-ops ALL=(root) NOPASSWD: /usr/bin/systemctl start --wait blossoml-ops-backup-db.service
+blossoml-ops ALL=(root) NOPASSWD: /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@6.service, \
+                                  /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@12.service, \
+                                  /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@24.service, \
+                                  /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@48.service, \
+                                  /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@72.service, \
+                                  /usr/bin/systemctl start --wait blossoml-ops-cleanup-tmp@168.service

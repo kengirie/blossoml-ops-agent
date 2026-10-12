@@ -180,7 +180,7 @@ WRITE_TOOLS = [
     ToolSpec(
         name="cleanup_tmp",
         description="data/ の tmp_* のうち、指定時間より古いものを削除する。事前に backup_db が成功している必要がある。",
-        params={"min_age_hours": Param("int", "この時間より古い tmp_* を削除する", minimum=6, maximum=168)},
+        params={"min_age_hours": Param("int_choice", "この時間より古い tmp_* を削除する", choices=write_ops.CLEANUP_AGES)},
         run=write_ops.cleanup_tmp,
         timeout_s=130,
         representative_args=[{"min_age_hours": 24}],

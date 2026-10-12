@@ -1,0 +1,13 @@
+# Phase 2: delete data/tmp_* older than %i hours, started by the agent through
+# sudo. The instance must be one of the values allowed in sudoers; the script
+# validates it again.
+[Unit]
+Description=blossoML tmp_* cleanup older than %i hours (requested by blossoml-ops)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/blossoml-ops/cleanup-tmp %i
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

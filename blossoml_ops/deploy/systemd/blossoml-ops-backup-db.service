@@ -1,0 +1,13 @@
+# Phase 2: online backup of blossom.db, started by the agent through sudo
+# (`systemctl start --wait`). Runs as root outside the agent's sandbox, whose
+# ProtectHome=read-only would otherwise also apply to the script.
+[Unit]
+Description=blossoML DB backup (requested by blossoml-ops)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/blossoml-ops/backup-db
+TimeoutStartSec=5min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

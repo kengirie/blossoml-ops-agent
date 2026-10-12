@@ -64,10 +64,13 @@ rules:
 
   - id: R4
     name: 再起動後は稼働確認する
-    description: restart_service の後に http_probe（target=root_get）で HTTP 200 を確認してください。
+    description: restart_service の後に http_probe（target=root_get）で稼働を確認してください（結果が 200 でなくても、確認したことになります）。
+    # The obligation is to check, not to succeed: a restart that does not fix
+    # the server must still be checkable and reportable (probe_ok would make
+    # the rule unsatisfiable exactly when the outage persists).
     template: response
     trigger: restart
-    response: probe_ok
+    response: probe_done
     on_violation: deny
 
   - id: R5

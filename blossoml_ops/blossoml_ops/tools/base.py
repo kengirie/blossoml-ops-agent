@@ -36,9 +36,9 @@ class ToolError(Exception):
 
 @dataclass(frozen=True)
 class Param:
-    kind: str  # "enum" | "int" | "str"
+    kind: str  # "enum" | "int" | "int_choice" | "str"
     description: str
-    choices: tuple[str, ...] = ()
+    choices: tuple = ()
     minimum: int = 0
     maximum: int = 0
     max_len: int = 0
@@ -49,6 +49,8 @@ class Param:
             return {"type": "string", "enum": list(self.choices), "description": self.description}
         if self.kind == "int":
             return {"type": "integer", "minimum": self.minimum, "maximum": self.maximum, "description": self.description}
+        if self.kind == "int_choice":
+            return {"type": "integer", "enum": list(self.choices), "description": self.description}
         if self.kind == "str":
             return {"type": "string", "minLength": 1, "maxLength": self.max_len, "description": self.description}
         raise ValueError(self.kind)
@@ -63,6 +65,10 @@ class Param:
                 raise ArgError(f"{name} must be an integer")
             if not self.minimum <= value <= self.maximum:
                 raise ArgError(f"{name} must be in {self.minimum}..{self.maximum}")
+            return value
+        if self.kind == "int_choice":
+            if isinstance(value, bool) or not isinstance(value, int) or value not in self.choices:
+                raise ArgError(f"{name} must be one of {list(self.choices)}")
             return value
         if self.kind == "str":
             if not isinstance(value, str) or not value.strip():

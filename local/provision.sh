@@ -43,6 +43,7 @@ rm -f /opt/lab/blossoml-ops-lab.tar /opt/blossoml-ops/incoming/remote-install.sh
 # --- 10. phase 2 files (installed, but phase2.enabled stays false) --------------
 install -d /usr/local/libexec/blossoml-ops
 install -o root -g root -m 0755 $D/libexec/backup-db $D/libexec/cleanup-tmp /usr/local/libexec/blossoml-ops/
+install -m 0644 $D/systemd/blossoml-ops-backup-db.service "$D/systemd/blossoml-ops-cleanup-tmp@.service" /etc/systemd/system/
 visudo -cf $D/sudoers/blossoml-ops
 install -o root -g root -m 0440 $D/sudoers/blossoml-ops /etc/sudoers.d/blossoml-ops
 
